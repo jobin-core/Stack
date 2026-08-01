@@ -199,6 +199,12 @@ export const FinanceApp: React.FC<FinanceAppProps> = ({ userId, globalCurrency }
   const [txTargetAccountId, setTxTargetAccountId] = useState<string>("");
   const [txCategoryId, setTxCategoryId] = useState<string>("");
   const [txDate, setTxDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [isTxDatePaletteOpen, setIsTxDatePaletteOpen] = useState(false);
+  const [txDatePaletteMonth, setTxDatePaletteMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const txDatePaletteRef = useRef<HTMLDivElement | null>(null);
 
   // Add Account Form States
   const [accName, setAccName] = useState<string>("");
@@ -225,6 +231,43 @@ export const FinanceApp: React.FC<FinanceAppProps> = ({ userId, globalCurrency }
   const [schCategoryId, setSchCategoryId] = useState<string>("");
   const [schFrequency, setSchFrequency] = useState<ScheduledPayment["frequency"]>("monthly");
   const [schStartDate, setSchStartDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  // Transaction date palette helpers
+  const txToISODate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const txParseISODate = (dateStr?: string) => {
+    if (!dateStr) return null;
+    const [year, month, day] = dateStr.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+  };
+
+  useEffect(() => {
+    if (!isTxDatePaletteOpen) return;
+
+    const handleOutside = (ev: MouseEvent) => {
+      const t = ev.target as Node;
+      if (!txDatePaletteRef.current?.contains(t)) setIsTxDatePaletteOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [isTxDatePaletteOpen]);
+
+  // Calendar grid for tx date palette
+  const txSelectedDate = txParseISODate(txDate);
+  const txMonthStart = new Date(txDatePaletteMonth.getFullYear(), txDatePaletteMonth.getMonth(), 1);
+  const txMonthLabel = txMonthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const txFirstWeekday = txMonthStart.getDay();
+  const txDaysInMonth = new Date(txMonthStart.getFullYear(), txMonthStart.getMonth() + 1, 0).getDate();
+  const txCalendarCells: Array<Date | null> = [];
+  for (let i = 0; i < txFirstWeekday; i += 1) txCalendarCells.push(null);
+  for (let d = 1; d <= txDaysInMonth; d += 1) txCalendarCells.push(new Date(txMonthStart.getFullYear(), txMonthStart.getMonth(), d));
+  while (txCalendarCells.length % 7 !== 0) txCalendarCells.push(null);
 
   // Editing Mode States
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
@@ -1049,7 +1092,7 @@ export const FinanceApp: React.FC<FinanceAppProps> = ({ userId, globalCurrency }
   // Export CSV handler
   const handleExportCSV = () => {
     const headers = ["Date", "Note", "Type", "Amount", "Source Wallet", "Destination Wallet", "Category"];
-    const rows = filteredTransactions.map(t => {
+    const rows = sortedFilteredTransactions.map(t => {
       const originName = accounts.find(a => a.id === t.accountId)?.name || "Unknown";
       const targetName = t.targetAccountId ? (accounts.find(a => a.id === t.targetAccountId)?.name || "Unknown") : "";
       const catName = categories.find(c => c.id === t.categoryId)?.name || "";
@@ -1168,6 +1211,9 @@ export const FinanceApp: React.FC<FinanceAppProps> = ({ userId, globalCurrency }
 
     return true;
   });
+
+    // Ensure transactions are presented newest-first by date when rendered
+    const sortedFilteredTransactions = [...filteredTransactions].sort((a, b) => b.date.localeCompare(a.date));
 
   // Filter Transaction metrics
   const filteredIncome = filteredTransactions
@@ -2078,7 +2124,7 @@ export const FinanceApp: React.FC<FinanceAppProps> = ({ userId, globalCurrency }
               </div>
             ) : (
               <div className="ledger-rows fin-space-y-2">
-                {filteredTransactions.map(renderTransactionRow)}
+                {sortedFilteredTransactions.map(renderTransactionRow)}
               </div>
             )}
           </div>
@@ -3107,43 +3153,99 @@ export const FinanceApp: React.FC<FinanceAppProps> = ({ userId, globalCurrency }
                 ))}
               </div>
 
-              {/* Amount */}
               <div className="fin-space-y-1">
                 <label className="block text-slate-400 font-semibold uppercase">Amount ({currencyCode})</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="0.00"
-                  value={txAmount}
-                  onChange={(e) => setTxAmount(e.target.value)}
-                  className="custom-input fin-w-full"
-                />
-              </div>
+                <div className="fin-input-row">
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="0.00"
+                    value={txAmount}
+                    onChange={(e) => setTxAmount(e.target.value)}
+                    className="custom-input fin-amount-input"
+                  />
 
-              {/* Description */}
-              <div className="fin-space-y-1">
-                <label className="block text-slate-400 font-semibold uppercase">Memo / Note</label>
-                <input
-                  type="text"
-                  placeholder="Groceries, salary, transfer text..."
-                  value={txNote}
-                  onChange={(e) => setTxNote(e.target.value)}
-                  className="custom-input fin-w-full"
-                />
-              </div>
+                  <div className="task-date-palette-wrap" ref={txDatePaletteRef}>
+                    <button
+                      type="button"
+                      className={`task-date-icon-btn ${txDate ? "has-date" : ""}`}
+                      onClick={() => setIsTxDatePaletteOpen((s) => !s)}
+                      title={txDate ? `Date: ${new Date(txDate).toLocaleDateString()}` : "Set date"}
+                      aria-label={txDate ? `Date set to ${new Date(txDate).toLocaleDateString()}` : "Set date"}
+                      aria-expanded={isTxDatePaletteOpen}
+                      aria-haspopup="dialog"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </button>
 
-              {/* Date */}
-              <div className="fin-space-y-1">
-                <label className="block text-slate-400 font-semibold uppercase">Date</label>
-                <input
-                  type="date"
-                  required
-                  value={txDate}
-                  onChange={(e) => setTxDate(e.target.value)}
-                  className="custom-input fin-w-full"
-                  style={{ colorScheme: "dark" }}
-                />
+                    {isTxDatePaletteOpen && (
+                      <div className="task-date-palette" role="dialog" aria-label="Choose transaction date">
+                        <div className="task-date-palette-header">
+                          <button
+                            type="button"
+                            className="task-date-nav-btn"
+                            onClick={() => setTxDatePaletteMonth(new Date(txMonthStart.getFullYear(), txMonthStart.getMonth() - 1, 1))}
+                            aria-label="Previous month"
+                          >
+                            <span aria-hidden="true">&lt;</span>
+                          </button>
+                          <span className="task-date-month-label">{txMonthLabel}</span>
+                          <button
+                            type="button"
+                            className="task-date-nav-btn"
+                            onClick={() => setTxDatePaletteMonth(new Date(txMonthStart.getFullYear(), txMonthStart.getMonth() + 1, 1))}
+                            aria-label="Next month"
+                          >
+                            <span aria-hidden="true">&gt;</span>
+                          </button>
+                        </div>
+
+                        <div className="task-date-weekdays" aria-hidden="true">
+                          {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((label) => (
+                            <span key={label}>{label}</span>
+                          ))}
+                        </div>
+
+                        <div className="task-date-grid">
+                          {txCalendarCells.map((cellDate, idx) => {
+                            if (!cellDate) return <span key={`blank-tx-${idx}`} className="task-date-empty-cell" aria-hidden="true" />;
+                            const iso = txToISODate(cellDate);
+                            const isToday = iso === new Date().toISOString().split("T")[0];
+                            const isSelected = txSelectedDate ? txToISODate(txSelectedDate) === iso : false;
+                            return (
+                              <button
+                                key={iso}
+                                type="button"
+                                className={`task-date-day-btn ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}`}
+                                onClick={() => { setTxDate(iso); setIsTxDatePaletteOpen(false); }}
+                                aria-label={cellDate.toLocaleDateString()}
+                              >
+                                {cellDate.getDate()}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="task-date-palette-actions">
+                          <button type="button" className="task-date-action-btn" onClick={() => { setTxDate(new Date().toISOString().split("T")[0]); setIsTxDatePaletteOpen(false); }}>Today</button>
+                          <button type="button" className="task-date-action-btn" onClick={() => { setTxDate(""); setIsTxDatePaletteOpen(false); }}>Clear</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="fin-space-y-1">
+                  <label className="block text-slate-400 font-semibold uppercase">Memo / Note</label>
+                  <input
+                    type="text"
+                    placeholder="Groceries, salary, transfer text..."
+                    value={txNote}
+                    onChange={(e) => setTxNote(e.target.value)}
+                    className="custom-input fin-w-full"
+                  />
+                </div>
               </div>
 
               {/* Wallets */}

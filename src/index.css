@@ -3194,8 +3194,17 @@ div.text-\[10px\] {
   gap: 10px;
   align-items: center;
 }
+
+.task-add-actions-inputs {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .task-date-input {
-  min-width: 170px;
+  min-width: 50px;
+  max-width: 110px;
   height: 40px;
   font-size: 12px;
   appearance: none;
@@ -3218,6 +3227,158 @@ div.text-\[10px\] {
 }
 .task-date-input::-webkit-calendar-picker-indicator {
   opacity: 0.75;
+}
+.task-date-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.task-date-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.task-date-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.task-date-icon-btn.has-date {
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+.task-date-palette-wrap {
+  position: relative;
+}
+.fin-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.fin-amount-input {
+  flex: 1;
+}
+.task-date-palette-wrap {
+  width: 40px;
+  flex: 0 0 40px;
+}
+.task-date-palette {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 268px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: #0f172a;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.45);
+  z-index: 18;
+}
+.task-date-palette-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.task-date-nav-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.task-date-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.task-date-month-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.task-date-weekdays,
+.task-date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.task-date-weekdays {
+  margin-bottom: 8px;
+}
+.task-date-weekdays span {
+  font-size: 11px;
+  text-align: center;
+  color: #94a3b8;
+}
+.task-date-empty-cell {
+  min-height: 30px;
+}
+.task-date-day-btn {
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 600;
+}
+.task-date-day-btn:hover {
+  border-color: color-mix(in srgb, var(--primary-color) 35%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: #fff;
+}
+.task-date-day-btn.today {
+  border-color: #10b981;
+  border-width: 2px;
+  color: #ffffff;
+  font-weight: 700;
+  background: rgba(16,185,129,0.03);
+}
+.task-date-day-btn.selected {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #0b1022;
+}
+.task-date-day-btn.today.selected {
+  /* Ensure today's visual wins over 'selected' when both classes apply */
+  background: rgba(16,185,129,0.12);
+  border-color: #10b981;
+  border-width: 2px;
+  color: #ffffff;
+  font-weight: 700;
+}
+.task-date-palette-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-date-action-btn {
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  color: #cbd5e1;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+}
+.task-date-action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 .task-description-input,
 .task-edit-description {
@@ -3566,6 +3727,14 @@ div.text-\[10px\] {
   color: #fff;
 }
 
+@media (max-width: 1400px) {
+
+  .task-add-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 @media (max-width: 1180px) {
   .planner-analytics-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3585,6 +3754,17 @@ div.text-\[10px\] {
   .task-date-input {
     width: 100%;
     min-width: 0;
+  }
+
+  .task-date-icon-btn {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .task-date-palette {
+    right: 0;
+    left: auto;
+    width: min(100vw - 50px, 268px);
   }
 
   .planner-modal-grid {

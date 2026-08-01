@@ -24,7 +24,6 @@ export type TaskStatus = "ToDo" | "InProgress" | "Blocked" | "Done";
 interface Task {
   id: string;
   text: string;
-  description?: string;
   targetDate?: string;
   completed: boolean;
   status?: TaskStatus;
@@ -40,14 +39,17 @@ interface PlannerAppProps {
 export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime, globalBreakTime }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
-  const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskTargetDate, setNewTaskTargetDate] = useState("");
+  const [isDatePaletteOpen, setIsDatePaletteOpen] = useState(false);
+  const [datePaletteMonth, setDatePaletteMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [openTaskMenuId, setOpenTaskMenuId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskText, setEditingTaskText] = useState("");
-  const [editingTaskDescription, setEditingTaskDescription] = useState("");
   const [editingTaskTargetDate, setEditingTaskTargetDate] = useState("");
   const [editingTaskStatus, setEditingTaskStatus] = useState<TaskStatus>("ToDo");
 
@@ -56,6 +58,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes
   const [isRunning, setIsRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const datePaletteRef = useRef<HTMLDivElement | null>(null);
 
 
   const times = {
@@ -65,10 +68,10 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   };
 
   useEffect(() => {
-    if (!isRunning) {
+    if (!isRunning && timeLeft === times[mode]) {
       setTimeLeft(times[mode]);
     }
-  }, [globalFocusTime, globalBreakTime, mode, isRunning]);
+  }, [globalFocusTime, globalBreakTime]);
 
   useEffect(() => {
     const handleGlobalPointerDown = (event: MouseEvent) => {
@@ -84,6 +87,9 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isDatePaletteOpen) {
+        setIsDatePaletteOpen(false);
+      }
       if (event.key === "Escape" && editingTaskId) {
         cancelEditTask();
       }
@@ -91,7 +97,21 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [editingTaskId]);
+  }, [editingTaskId, isDatePaletteOpen]);
+
+  useEffect(() => {
+    if (!isDatePaletteOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!datePaletteRef.current?.contains(target)) {
+        setIsDatePaletteOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isDatePaletteOpen]);
 
   // Switch timer mode
   const changeMode = (newMode: "focus" | "shortBreak" | "longBreak") => {
@@ -178,9 +198,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
             status: t.status || (t.completed ? "Done" : "ToDo"),
             createdAt: t.createdAt || new Date().toISOString()
           };
-          if (t.description && t.description.trim()) {
-            item.description = t.description.trim();
-          }
           if (t.targetDate && t.targetDate.trim()) {
             item.targetDate = t.targetDate.trim();
           }
@@ -207,9 +224,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
       status: "ToDo",
       createdAt: new Date().toISOString()
     };
-    if (newTaskDescription.trim()) {
-      newTask.description = newTaskDescription.trim();
-    }
     if (newTaskTargetDate.trim()) {
       newTask.targetDate = newTaskTargetDate.trim();
     }
@@ -217,8 +231,38 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     const updated = [...tasks, newTask];
     saveTasks(updated);
     setNewTaskText("");
-    setNewTaskDescription("");
     setNewTaskTargetDate("");
+  };
+
+  const toISODate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const parseISODate = (dateStr?: string) => {
+    if (!dateStr) return null;
+    const [year, month, day] = dateStr.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+  };
+
+  const openDatePalette = () => {
+    const selected = parseISODate(newTaskTargetDate);
+    if (selected) {
+      setDatePaletteMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
+    }
+    setIsDatePaletteOpen(true);
+  };
+
+  const closeDatePalette = () => {
+    setIsDatePaletteOpen(false);
+  };
+
+  const handlePickDate = (date: Date) => {
+    setNewTaskTargetDate(toISODate(date));
+    closeDatePalette();
   };
 
   const updateTaskStatus = (taskId: string, newStatus: TaskStatus) => {
@@ -265,7 +309,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     setOpenTaskMenuId(null);
     setEditingTaskId(task.id);
     setEditingTaskText(task.text);
-    setEditingTaskDescription(task.description || "");
     setEditingTaskTargetDate(task.targetDate || "");
     setEditingTaskStatus(getTaskStatus(task));
   };
@@ -273,7 +316,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   const cancelEditTask = () => {
     setEditingTaskId(null);
     setEditingTaskText("");
-    setEditingTaskDescription("");
     setEditingTaskTargetDate("");
     setEditingTaskStatus("ToDo");
   };
@@ -289,11 +331,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
           status: editingTaskStatus,
           completed: editingTaskStatus === "Done",
         };
-        if (editingTaskDescription.trim()) {
-          next.description = editingTaskDescription.trim();
-        } else {
-          delete next.description;
-        }
         if (editingTaskTargetDate.trim()) {
           next.targetDate = editingTaskTargetDate.trim();
         } else {
@@ -322,6 +359,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   };
 
   const todayISO = new Date().toISOString().split("T")[0];
+  const todayDate = parseISODate(todayISO) || new Date();
 
   const getDayDiff = (dateStr: string) => {
     const [y, m, d] = dateStr.split("-").map(Number);
@@ -360,6 +398,23 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   // Progress percentage
   const totalModeSeconds = times[mode];
   const progressPercent = ((totalModeSeconds - timeLeft) / totalModeSeconds) * 100;
+
+  const selectedDate = parseISODate(newTaskTargetDate);
+  const monthStart = new Date(datePaletteMonth.getFullYear(), datePaletteMonth.getMonth(), 1);
+  const monthLabel = monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const firstWeekday = monthStart.getDay();
+  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+  const calendarCells: Array<Date | null> = [];
+
+  for (let i = 0; i < firstWeekday; i += 1) {
+    calendarCells.push(null);
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    calendarCells.push(new Date(monthStart.getFullYear(), monthStart.getMonth(), day));
+  }
+  while (calendarCells.length % 7 !== 0) {
+    calendarCells.push(null);
+  }
 
   return (
     <div className="micro-app-container planner-app">
@@ -461,7 +516,15 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
               ) : (
                 <>
                   <Play className="w-5 h-5 fill-current" />
-                  <span>Start Focus</span>
+                  <span>
+                    {timeLeft < times[mode]
+                      ? mode === "focus"
+                        ? "Resume Focus"
+                        : "Resume Break"
+                      : mode === "focus"
+                        ? "Start Focus"
+                        : "Start Break"}
+                  </span>
                 </>
               )}
             </button>
@@ -508,32 +571,104 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
           </div>
 
           <form onSubmit={handleAddTask} className="add-task-form">
-            <div className="task-add-fields">
-              <input
-                type="text"
-                placeholder="What are you working on next?"
-                value={newTaskText}
-                onChange={(e) => setNewTaskText(e.target.value)}
-                className="custom-input task-input"
-                maxLength={80}
-              />
-              <input
-                type="text"
-                placeholder="Add a short description (optional)"
-                value={newTaskDescription}
-                onChange={(e) => setNewTaskDescription(e.target.value)}
-                className="custom-input task-description-input"
-                maxLength={160}
-              />
-            </div>
             <div className="task-add-actions">
-              <input
-                type="date"
-                value={newTaskTargetDate}
-                onChange={(e) => setNewTaskTargetDate(e.target.value)}
-                className="custom-input task-date-input"
-                aria-label="Target date"
-              />
+              <div className="task-add-actions-inputs">
+                <input
+                  type="text"
+                  placeholder="What are you working on next?"
+                  value={newTaskText}
+                  onChange={(e) => setNewTaskText(e.target.value)}
+                  className="custom-input task-input"
+                  maxLength={80}
+                />
+                <div className="task-date-palette-wrap" ref={datePaletteRef}>
+                  <button
+                    type="button"
+                    className={`task-date-icon-btn ${newTaskTargetDate ? "has-date" : ""}`}
+                    onClick={() => (isDatePaletteOpen ? closeDatePalette() : openDatePalette())}
+                    title={newTaskTargetDate ? `Target date: ${formatTargetDate(newTaskTargetDate)}` : "Set target date"}
+                    aria-label={newTaskTargetDate ? `Target date set to ${formatTargetDate(newTaskTargetDate)}` : "Set target date"}
+                    aria-expanded={isDatePaletteOpen}
+                    aria-haspopup="dialog"
+                  >
+                    <CalendarDays className="w-4 h-4" />
+                  </button>
+
+                  {isDatePaletteOpen && (
+                    <div className="task-date-palette" role="dialog" aria-label="Choose target date">
+                      <div className="task-date-palette-header">
+                        <button
+                          type="button"
+                          className="task-date-nav-btn"
+                          onClick={() => setDatePaletteMonth(new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1))}
+                          aria-label="Previous month"
+                        >
+                          <span aria-hidden="true">&lt;</span>
+                        </button>
+                        <span className="task-date-month-label">{monthLabel}</span>
+                        <button
+                          type="button"
+                          className="task-date-nav-btn"
+                          onClick={() => setDatePaletteMonth(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1))}
+                          aria-label="Next month"
+                        >
+                          <span aria-hidden="true">&gt;</span>
+                        </button>
+                      </div>
+
+                      <div className="task-date-weekdays" aria-hidden="true">
+                        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((label) => (
+                          <span key={label}>{label}</span>
+                        ))}
+                      </div>
+
+                      <div className="task-date-grid">
+                        {calendarCells.map((cellDate, idx) => {
+                          if (!cellDate) {
+                            return <span key={`blank-${idx}`} className="task-date-empty-cell" aria-hidden="true" />;
+                          }
+
+                          const cellISO = toISODate(cellDate);
+                          const isToday = cellISO === todayISO;
+                          const isSelected = selectedDate ? toISODate(selectedDate) === cellISO : false;
+
+                          return (
+                            <button
+                              key={cellISO}
+                              type="button"
+                              className={`task-date-day-btn ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}`}
+                              onClick={() => handlePickDate(cellDate)}
+                              aria-label={cellDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                            >
+                              {cellDate.getDate()}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="task-date-palette-actions">
+                        <button
+                          type="button"
+                          className="task-date-action-btn"
+                          onClick={() => handlePickDate(todayDate)}
+                        >
+                          Today
+                        </button>
+                        <button
+                          type="button"
+                          className="task-date-action-btn"
+                          onClick={() => {
+                            setNewTaskTargetDate("");
+                            closeDatePalette();
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
               <button type="submit" className="primary-btn">
                 <Plus className="w-4 h-4" />
                 <span>Add</span>
@@ -574,7 +709,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
                       <>
                         <div className="task-copy-wrap">
                           <span className="task-text" title={task.text}>{task.text}</span>
-                          {task.description && <span className="task-description">{task.description}</span>}
                           <div className="task-meta-row">
                             {task.targetDate && (
                               <span className={`task-deadline-chip ${isTaskOverdue(task) ? "overdue" : task.targetDate === todayISO ? "today" : "upcoming"}`}>
@@ -651,17 +785,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
                 maxLength={80}
                 autoFocus
               />
-
-              <label className="planner-field-label">Description</label>
-              <textarea
-                value={editingTaskDescription}
-                onChange={(e) => setEditingTaskDescription(e.target.value)}
-                className="custom-input planner-description-area"
-                rows={3}
-                maxLength={220}
-                placeholder="Add details for this task"
-              />
-
               <div className="planner-modal-grid">
                 <div>
                   <label className="planner-field-label">Target Date</label>
