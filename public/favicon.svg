@@ -1,0 +1,81 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="120" fill="#09090B"/>
+  <rect x="2" y="2" width="508" height="508" rx="118" stroke="rgba(255, 255, 255, 0.08)" stroke-width="4"/>
+  
+  <defs>
+    <!-- Top Plate Gradients -->
+    <linearGradient id="purple-top" x1="120" y1="100" x2="390" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A78BFA" />
+      <stop offset="45%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#4C1D95" />
+    </linearGradient>
+    <linearGradient id="purple-side" x1="120" y1="180" x2="390" y2="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5B21B6" />
+      <stop offset="100%" stop-color="#2E1065" />
+    </linearGradient>
+
+    <!-- Middle Plate Gradients -->
+    <linearGradient id="emerald-top" x1="120" y1="190" x2="390" y2="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="45%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#064E3B" />
+    </linearGradient>
+    <linearGradient id="emerald-side" x1="120" y1="270" x2="390" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#047857" />
+      <stop offset="100%" stop-color="#022C22" />
+    </linearGradient>
+
+    <!-- Bottom Plate Gradients -->
+    <linearGradient id="amber-top" x1="120" y1="280" x2="390" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FBBF24" />
+      <stop offset="45%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#78350F" />
+    </linearGradient>
+    <linearGradient id="amber-side" x1="120" y1="360" x2="390" y2="450" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#B45309" />
+      <stop offset="100%" stop-color="#451A03" />
+    </linearGradient>
+
+    <!-- Specular Rim Light -->
+    <linearGradient id="rim-light" x1="100" y1="100" x2="400" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6" />
+      <stop offset="60%" stop-color="#FFFFFF" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Soft Drop Shadows -->
+    <filter id="plate-shadow" x="50" y="50" width="412" height="420" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#000000" flood-opacity="0.6" />
+    </filter>
+  </defs>
+
+  <!-- ===== BOTTOM LAYER (AMBER) ===== -->
+  <g filter="url(#plate-shadow)">
+    <!-- 3D Side Rim -->
+    <path d="M 108 364 Q 96 350 116 338 L 232 282 Q 256 270 280 282 L 396 338 Q 416 350 404 364 L 280 420 Q 256 430 232 420 Z" transform="translate(0, 22)" fill="url(#amber-side)"/>
+    <!-- Top Surface -->
+    <path d="M 232 282 Q 256 270 280 282 L 396 338 Q 416 350 404 364 L 280 420 Q 256 430 232 420 L 108 364 Q 96 350 116 338 Z" fill="url(#amber-top)"/>
+    <!-- Highlight Rim -->
+    <path d="M 116 338 L 232 282 Q 256 270 280 282 L 396 338" stroke="url(#rim-light)" stroke-width="2" fill="none"/>
+  </g>
+
+  <!-- ===== MIDDLE LAYER (EMERALD) ===== -->
+  <g filter="url(#plate-shadow)">
+    <!-- 3D Side Rim -->
+    <path d="M 108 274 Q 96 260 116 248 L 232 192 Q 256 180 280 192 L 396 248 Q 416 260 404 274 L 280 330 Q 256 340 232 330 Z" transform="translate(0, 22)" fill="url(#emerald-side)"/>
+    <!-- Top Surface -->
+    <path d="M 232 192 Q 256 180 280 192 L 396 248 Q 416 260 404 274 L 280 330 Q 256 340 232 330 L 108 274 Q 96 260 116 248 Z" fill="url(#emerald-top)"/>
+    <!-- Highlight Rim -->
+    <path d="M 116 248 L 232 192 Q 256 180 280 192 L 396 248" stroke="url(#rim-light)" stroke-width="2" fill="none"/>
+  </g>
+
+  <!-- ===== TOP LAYER (PURPLE) ===== -->
+  <g filter="url(#plate-shadow)">
+    <!-- 3D Side Rim -->
+    <path d="M 108 184 Q 96 170 116 158 L 232 102 Q 256 90 280 102 L 396 158 Q 416 170 404 184 L 280 240 Q 256 250 232 240 Z" transform="translate(0, 22)" fill="url(#purple-side)"/>
+    <!-- Top Surface -->
+    <path d="M 232 102 Q 256 90 280 102 L 396 158 Q 416 170 404 184 L 280 240 Q 256 250 232 240 L 108 184 Q 96 170 116 158 Z" fill="url(#purple-top)"/>
+    <!-- Highlight Rim -->
+    <path d="M 116 158 L 232 102 Q 256 90 280 102 L 396 158" stroke="url(#rim-light)" stroke-width="2.5" fill="none"/>
+  </g>
+</svg>

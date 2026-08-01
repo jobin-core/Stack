@@ -1,0 +1,51 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Firebase administrative credentials and service account keys
+*-firebase-adminsdk-*.json
+service-account*.json
+firebase-credentials.json
+
+# Local SQLite databases and backups
+*.sqlite
+*.sqlite3
+*.db
+
+# Local environment variables files
+.env
+.env.*
+!.env.example
+
+# Cache and build directories
+.firebase/
+.npm-cache/
+.claude/
+.gemini/
+
+# Agent skills and local IDE configuration
+.agents/
+skills-lock.json
+
+
