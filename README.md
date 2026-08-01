@@ -3,7 +3,7 @@
 
   **The modern, all-in-one personal operating system built for focus, financial clarity, and daily momentum.**
 
-  [![Live Demo](https://img.shields.io/badge/Live%20Demo-https%3A%2F%2Fstack--6a17c.web.app-6366F1?style=for-the-badge&logo=firebase&logoColor=white)](https://stack-6a17c.web.app)
+  [![Live Demo](https://img.shields.io/badge/Live%20Demo-https%3A%2F%2Fstack--6a17c.web.app-6366F1?style=for-the-badge&logo=firebase&logoColor=white)](https://stack.jobinjose.in)
   [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
   [![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
