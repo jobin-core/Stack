@@ -22,7 +22,7 @@ export const SettingsApp: React.FC<SettingsAppProps> = ({ settings, onSave, emai
   const [currency, setCurrency] = useState(settings.currency);
   const [pomodoroFocus, setPomodoroFocus] = useState(settings.pomodoroFocus);
   const [pomodoroBreak, setPomodoroBreak] = useState(settings.pomodoroBreak);
-  const [dailyHabitTarget, setDailyHabitTarget] = useState(settings.dailyHabitTarget);
+  const [pomodoroLongBreak, setPomodoroLongBreak] = useState((settings as any).pomodoroLongBreak ?? 15);
   const [displayName, setDisplayName] = useState(settings.displayName);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -37,7 +37,7 @@ export const SettingsApp: React.FC<SettingsAppProps> = ({ settings, onSave, emai
         currency,
         pomodoroFocus,
         pomodoroBreak,
-        dailyHabitTarget,
+        pomodoroLongBreak,
         displayName
       });
       setSaveSuccess(true);
@@ -192,18 +192,20 @@ export const SettingsApp: React.FC<SettingsAppProps> = ({ settings, onSave, emai
                 />
               </div>
 
-              <div className="fin-space-y-1 sm:fin-col-span-2">
-                <label className="block text-slate-400 text-[10px] font-semibold uppercase">Daily Habits Goal (hours)</label>
+              <div className="fin-space-y-1">
+                <label className="block text-slate-400 text-[10px] font-semibold uppercase">Pomodoro Long Break Timer (min)</label>
                 <input
                   type="number"
                   required
                   min="1"
-                  max="24"
-                  value={dailyHabitTarget}
-                  onChange={(e) => setDailyHabitTarget(parseInt(e.target.value) || 2)}
+                  max="120"
+                  value={pomodoroLongBreak}
+                  onChange={(e) => setPomodoroLongBreak(parseInt(e.target.value) || 15)}
                   className="custom-input fin-w-full"
                 />
               </div>
+
+              {/* Daily habit target removed — unused setting */}
             </div>
           </div>
 
