@@ -40,8 +40,8 @@ export interface WorkspaceSettings {
   theme: "dark" | "light";
   currency: string;
   pomodoroFocus: number;
+  pomodoroLongBreak: number;
   pomodoroBreak: number;
-  dailyHabitTarget: number;
   displayName: string;
 }
 
@@ -49,8 +49,8 @@ const defaultSettings: WorkspaceSettings = {
   theme: "dark",
   currency: "USD",
   pomodoroFocus: 25,
+  pomodoroLongBreak: 15,
   pomodoroBreak: 5,
-  dailyHabitTarget: 2,
   displayName: ""
 };
 
@@ -73,6 +73,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   useEffect(() => {
     applyTheme(settings.theme);
   }, [settings.theme]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const ev = e as CustomEvent<string>;
+        const dest = ev.detail as unknown as string;
+        if (dest === "settings") setActiveTab("settings");
+      } catch (_) {}
+    };
+    window.addEventListener("app:navigate", handler as EventListener);
+    return () => window.removeEventListener("app:navigate", handler as EventListener);
+  }, []);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -158,8 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         const completedToday = habits.filter((h: any) => (h.completedDates || []).includes(todayStr)).length;
         const rate = habits.length > 0 ? Math.round((completedToday / habits.length) * 100) : 0;
         const sortedHabits = [...habits].sort((a: any, b: any) => (b.streak || 0) - (a.streak || 0));
-        const configuredGoal = Math.max(settings.dailyHabitTarget || defaultSettings.dailyHabitTarget, 1);
-        const goalTarget = habits.length > 0 ? habits.length : configuredGoal;
+        const goalTarget = Math.max(habits.length, 1);
         const goalProgress = habits.length > 0 ? Math.min(100, Math.round((completedToday / goalTarget) * 100)) : 0;
 
         setHabitCount(habits.length);
@@ -257,7 +268,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     return () => {
       unsubs.forEach((unsubscribe) => unsubscribe());
     };
-  }, [userKey, settings.dailyHabitTarget]);
+  }, [userKey]);
 
   const handleSignOut = () => {
     setShowSignOutConfirm(true);
@@ -597,7 +608,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         
         {/* Render PlannerApp continuously to keep Pomodoro timer running on tab switches */}
         <div style={{ display: activeTab === "planner" ? "block" : "none" }}>
-          <PlannerApp userId={userKey} globalFocusTime={settings.pomodoroFocus} globalBreakTime={settings.pomodoroBreak} />
+          <PlannerApp userId={userKey} globalFocusTime={settings.pomodoroFocus} globalBreakTime={settings.pomodoroBreak} globalLongBreakTime={settings.pomodoroLongBreak} />
         </div>
         
         {activeTab === "notes" && <NotesApp userId={userKey} />}

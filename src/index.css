@@ -3054,6 +3054,45 @@ div.text-\[10px\] {
   align-items: center;
   gap: 24px;
 }
+
+/* Make timer card a positioned container for the settings icon */
+
+.timer-section-card {
+  position: relative;
+  padding-top: 36px; /* reserve space for top-right settings icon */
+}
+
+.timer-settings-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.timer-settings-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Make each mode row full width and let the button span the card */
+.timer-mode-selector .mode-item {
+  width: 100%;
+}
+.timer-mode-selector .mode-item .mode-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* Settings label next to icon */
+/* label removed: no styles needed */
 .timer-mode-selector {
   display: flex;
   flex-direction: column;
@@ -3082,6 +3121,29 @@ div.text-\[10px\] {
   background: rgba(59, 130, 246, 0.08);
   border-color: rgba(59, 130, 246, 0.3);
   color: #93c5fd;
+}
+
+.focus-custom-input {
+  max-width: 80px;
+}
+
+/* Settings icon button inside mode rows: remove background and make icon smaller */
+.mode-settings-btn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mode-settings-btn:hover {
+  background: transparent;
+}
+.mode-settings-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .pomodoro-display-wrapper {

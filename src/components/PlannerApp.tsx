@@ -14,7 +14,8 @@ import {
   Check,
   X,
   AlertTriangle,
-  CalendarDays
+  CalendarDays,
+  Settings
 } from "lucide-react";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
@@ -34,9 +35,10 @@ interface PlannerAppProps {
   userId: string;
   globalFocusTime?: number;
   globalBreakTime?: number;
+  globalLongBreakTime?: number;
 }
 
-export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime, globalBreakTime }) => {
+export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime, globalBreakTime, globalLongBreakTime }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
   const [newTaskTargetDate, setNewTaskTargetDate] = useState("");
@@ -55,8 +57,8 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
 
   // Timer States
   const [mode, setMode] = useState<"focus" | "shortBreak" | "longBreak">("focus");
-  const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes
   const [isRunning, setIsRunning] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(() => (globalFocusTime || 25) * 60);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const datePaletteRef = useRef<HTMLDivElement | null>(null);
 
@@ -64,14 +66,14 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   const times = {
     focus: (globalFocusTime || 25) * 60,
     shortBreak: (globalBreakTime || 5) * 60,
-    longBreak: 15 * 60,
+    longBreak: (globalLongBreakTime || 15) * 60,
   };
 
   useEffect(() => {
     if (!isRunning && timeLeft === times[mode]) {
       setTimeLeft(times[mode]);
     }
-  }, [globalFocusTime, globalBreakTime]);
+  }, [globalFocusTime, globalBreakTime, globalLongBreakTime]);
 
   useEffect(() => {
     const handleGlobalPointerDown = (event: MouseEvent) => {
@@ -118,6 +120,15 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     setIsRunning(false);
     setMode(newMode);
     setTimeLeft(times[newMode]);
+  };
+
+  const handlePlayPause = () => {
+    if (!isRunning) {
+      // Start or resume: do not reset `timeLeft` when resuming from a pause.
+      setIsRunning(true);
+    } else {
+      setIsRunning(false);
+    }
   };
 
   // Timer Tick Effect
@@ -458,26 +469,46 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
         <div className="app-sidebar-card timer-section-card">
           <div className="timer-mode-selector">
             <button
-              className={`mode-btn ${mode === "focus" ? "active" : ""}`}
-              onClick={() => changeMode("focus")}
+              type="button"
+              className="timer-settings-btn"
+              title="Open timer settings"
+              onClick={() => window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'settings' }))}
+              aria-label="Open settings"
             >
-              <Clock className="w-4 h-4" />
-              <span>Focus (25m)</span>
+              <Settings className="w-4 h-4" />
             </button>
-            <button
-              className={`mode-btn ${mode === "shortBreak" ? "active" : ""}`}
-              onClick={() => changeMode("shortBreak")}
-            >
-              <Coffee className="w-4 h-4" />
-              <span>Short Break (5m)</span>
-            </button>
-            <button
-              className={`mode-btn ${mode === "longBreak" ? "active" : ""}`}
-              onClick={() => changeMode("longBreak")}
-            >
-              <Coffee className="w-4 h-4" />
-              <span>Long Break (15m)</span>
-            </button>
+            <div className="mode-item" style={{display: 'flex', alignItems: 'center', gap: 8}}>
+              <button
+                className={`mode-btn ${mode === "focus" ? "active" : ""}`}
+                onClick={() => changeMode("focus")}
+                type="button"
+              >
+                <Clock className="w-4 h-4" />
+                <span>Focus ({Math.round(times.focus / 60)}m)</span>
+              </button>
+            </div>
+
+            <div className="mode-item" style={{display: 'flex', alignItems: 'center', gap: 8}}>
+              <button
+                className={`mode-btn ${mode === "shortBreak" ? "active" : ""}`}
+                onClick={() => changeMode("shortBreak")}
+                type="button"
+              >
+                <Coffee className="w-4 h-4" />
+                <span>Short Break ({Math.round(times.shortBreak / 60)}m)</span>
+              </button>
+            </div>
+
+            <div className="mode-item" style={{display: 'flex', alignItems: 'center', gap: 8}}>
+              <button
+                className={`mode-btn ${mode === "longBreak" ? "active" : ""}`}
+                onClick={() => changeMode("longBreak")}
+                type="button"
+              >
+                <Coffee className="w-4 h-4" />
+                <span>Long Break ({Math.round(times.longBreak / 60)}m)</span>
+              </button>
+            </div>
           </div>
 
           <div className="pomodoro-display-wrapper">
@@ -506,7 +537,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
           <div className="timer-controls">
             <button
               className={`control-btn play-pause ${isRunning ? "running" : ""}`}
-              onClick={() => setIsRunning(!isRunning)}
+              onClick={handlePlayPause}
             >
               {isRunning ? (
                 <>
