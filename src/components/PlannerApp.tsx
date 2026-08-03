@@ -62,6 +62,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   const [isRunning, setIsRunning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(() => (globalFocusTime || 25) * 60);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerEndTsRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const alarmOscRef = useRef<OscillatorNode | null>(null);
   const alarmGainRef = useRef<GainNode | null>(null);
@@ -216,6 +217,26 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     longBreak: (globalLongBreakTime || 15) * 60,
   };
 
+  const completeTimer = () => {
+    setIsRunning(false);
+    timerEndTsRef.current = null;
+    setInfoMsg(`${mode === "focus" ? "Focus session" : "Break"} is over!`);
+    setTimeout(() => setInfoMsg(""), 3500);
+    startAlarmLoop();
+    setTimeLeft(times[mode]);
+  };
+
+  const syncRemainingFromEndTs = () => {
+    const endTs = timerEndTsRef.current;
+    if (!endTs) return;
+    const remaining = Math.max(0, Math.ceil((endTs - Date.now()) / 1000));
+    if (remaining <= 0) {
+      completeTimer();
+    } else {
+      setTimeLeft(remaining);
+    }
+  };
+
   useEffect(() => {
     // When workspace settings change, update the visible timer only if not running and no active alarm.
     if (!isRunning && !alarmActive) {
@@ -275,6 +296,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   // Switch timer mode
   const changeMode = (newMode: "focus" | "shortBreak" | "longBreak") => {
     setIsRunning(false);
+    timerEndTsRef.current = null;
     setMode(newMode);
     setTimeLeft(times[newMode]);
     stopAlarmLoop();
@@ -287,10 +309,12 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
         stopAlarmLoop();
       } catch (e) {}
       void ensureAudioContextReady();
-
+      timerEndTsRef.current = Date.now() + timeLeft * 1000;
       setIsRunning(true);
     } else {
-      // Pause the timer (do not stop the alarm here).
+      // Pause the timer while preserving exact remaining time.
+      syncRemainingFromEndTs();
+      timerEndTsRef.current = null;
       setIsRunning(false);
     }
   };
@@ -298,21 +322,11 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   // Timer Tick Effect
   useEffect(() => {
     if (isRunning) {
+      // Keep countdown based on absolute time so background tab throttling doesn't freeze progress.
+      syncRemainingFromEndTs();
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            setIsRunning(false);
-            // Show a non-blocking info banner instead of a blocking alert box
-            setInfoMsg(`${mode === "focus" ? "Focus session" : "Break"} is over!`);
-            setTimeout(() => setInfoMsg(""), 3500);
-              // start repeating alarm until user stops it
-              startAlarmLoop();
-            return times[mode];
-          }
-          return prev - 1;
-        });
-      }, 1000);
+        syncRemainingFromEndTs();
+      }, 250);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -320,7 +334,18 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRunning, mode]);
+  }, [isRunning, mode, globalFocusTime, globalBreakTime, globalLongBreakTime]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && isRunning) {
+        syncRemainingFromEndTs();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [isRunning, mode, globalFocusTime, globalBreakTime, globalLongBreakTime]);
 
   // Load Planner Tasks
   useEffect(() => {
@@ -737,6 +762,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
               className="control-btn reset"
               onClick={() => {
                 setIsRunning(false);
+                timerEndTsRef.current = null;
                 setTimeLeft(times[mode]);
                 stopAlarmLoop();
               }}
