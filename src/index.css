@@ -299,6 +299,17 @@
   color: var(--text-secondary) !important;
   border-color: var(--border-color) !important;
 }
+
+/* Stop/Alarm button styling */
+.control-btn.stop {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+  color: #fff;
+  border-color: rgba(0,0,0,0.15);
+  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.18);
+}
+.control-btn.stop:hover {
+  filter: brightness(1.03);
+}
 .theme-light .signout-item-btn:hover {
   color: var(--color-rose) !important;
   background: rgba(244, 63, 94, 0.05) !important;

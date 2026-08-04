@@ -127,6 +127,33 @@ npm run build
 firebase deploy
 ```
 
+### 6. GitHub Actions CD to Firebase Hosting
+
+This repo includes a production deploy workflow at `/Users/jobin/Home/Dev/stack/.github/workflows/firebase-hosting-deploy.yml`.
+
+- Deploy trigger: push to the `master` branch
+- Manual trigger: GitHub Actions `workflow_dispatch`
+- Hosting target: Firebase Hosting `live` channel for project `stack-6a17c`
+
+Add these GitHub repository secrets before using the workflow:
+
+```text
+FIREBASE_SERVICE_ACCOUNT_STACK_6A17C
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_MEASUREMENT_ID
+```
+
+To create `FIREBASE_SERVICE_ACCOUNT_STACK_6A17C`:
+
+1. Open Firebase Console → Project Settings → Service Accounts
+2. Generate a new private key for the `stack-6a17c` project
+3. Copy the full JSON into the GitHub secret named `FIREBASE_SERVICE_ACCOUNT_STACK_6A17C`
+
 ---
 
 ## 🔒 Security & Privacy

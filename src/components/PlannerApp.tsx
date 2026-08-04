@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import alarmSound from "../assets/stack-focus-alert.mp3";
 
 export type TaskStatus = "ToDo" | "InProgress" | "Blocked" | "Done";
 
@@ -38,6 +39,64 @@ interface PlannerAppProps {
   globalLongBreakTime?: number;
 }
 
+const createAlarmToneDataUri = () => {
+  const sampleRate = 22050;
+  const durationSec = 1.2;
+  const sampleCount = Math.floor(sampleRate * durationSec);
+  const pcm = new Int16Array(sampleCount);
+  const notes = [783.99, 659.25, 880.0, 659.25];
+  const noteLength = Math.floor(sampleCount / notes.length);
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const noteIndex = Math.min(notes.length - 1, Math.floor(index / noteLength));
+    const frequency = notes[noteIndex];
+    const localIndex = index % noteLength;
+    const fadeIn = Math.min(1, localIndex / 220);
+    const fadeOut = Math.min(1, (noteLength - localIndex) / 320);
+    const envelope = Math.max(0, Math.min(fadeIn, fadeOut));
+    const harmonic =
+      Math.sin((2 * Math.PI * frequency * index) / sampleRate) * 0.7 +
+      Math.sin((2 * Math.PI * frequency * 2 * index) / sampleRate) * 0.18;
+    pcm[index] = Math.max(-1, Math.min(1, harmonic * envelope)) * 32767;
+  }
+
+  const buffer = new ArrayBuffer(44 + pcm.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + pcm.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, pcm.length * 2, true);
+
+  pcm.forEach((sample, index) => {
+    view.setInt16(44 + index * 2, sample, true);
+  });
+
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+
+  return `data:audio/wav;base64,${btoa(binary)}`;
+};
+
+const ALARM_TONE_DATA_URI = createAlarmToneDataUri();
+
 export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime, globalBreakTime, globalLongBreakTime }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
@@ -48,7 +107,9 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [loading, setLoading] = useState(true);
+  const [infoMsg, setInfoMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [alarmActive, setAlarmActive] = useState(false);
   const [openTaskMenuId, setOpenTaskMenuId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskText, setEditingTaskText] = useState("");
@@ -60,7 +121,232 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   const [isRunning, setIsRunning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(() => (globalFocusTime || 25) * 60);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerEndTsRef = useRef<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
+  const alarmOscRef = useRef<OscillatorNode | null>(null);
+  const alarmGainRef = useRef<GainNode | null>(null);
+  const alarmPatternIntervalRef = useRef<number | null>(null);
+  const audioPrimedRef = useRef(false);
   const datePaletteRef = useRef<HTMLDivElement | null>(null);
+  const isSafariBrowser =
+    typeof navigator !== "undefined" &&
+    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+  const ensureAudioContextReady = async (): Promise<AudioContext | null> => {
+    try {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return null;
+
+      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+        audioCtxRef.current = new AudioCtx();
+      }
+
+      let ctx = audioCtxRef.current;
+      if (!ctx) return null;
+
+      const state = ctx.state as string;
+      if (state === "suspended" || state === "interrupted") {
+        try {
+          await ctx.resume();
+        } catch (e) {}
+      }
+
+      // Safari can remain interrupted; recreate context once as fallback.
+      if ((ctx.state as string) !== "running") {
+        try {
+          audioCtxRef.current = new AudioCtx();
+          const refreshedCtx = audioCtxRef.current;
+          if (refreshedCtx && ((refreshedCtx.state as string) === "suspended" || (refreshedCtx.state as string) === "interrupted")) {
+            await refreshedCtx.resume().catch(() => {});
+          }
+          ctx = refreshedCtx;
+        } catch (e) {}
+      }
+
+      return ctx;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const ensureAlarmAudioReady = () => {
+    if (typeof window === "undefined") return null;
+    if (!alarmAudioRef.current) {
+      const audio = new Audio(alarmSound || ALARM_TONE_DATA_URI);
+      audio.loop = true;
+      audio.preload = "auto";
+      audio.volume = 0.95;
+      audio.setAttribute("playsinline", "true");
+      audio.addEventListener("error", () => {
+        if (audio.src !== ALARM_TONE_DATA_URI) {
+          audio.src = ALARM_TONE_DATA_URI;
+          audio.load();
+        }
+      });
+      alarmAudioRef.current = audio;
+    }
+    return alarmAudioRef.current;
+  };
+
+  const unlockAudioEngine = async () => {
+    const ctx = await ensureAudioContextReady();
+    if (ctx) {
+      try {
+        const unlockGain = ctx.createGain();
+        unlockGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        unlockGain.connect(ctx.destination);
+        const unlockOsc = ctx.createOscillator();
+        unlockOsc.frequency.setValueAtTime(440, ctx.currentTime);
+        unlockOsc.connect(unlockGain);
+        unlockOsc.start(ctx.currentTime);
+        unlockOsc.stop(ctx.currentTime + 0.01);
+        setTimeout(() => {
+          try {
+            unlockOsc.disconnect();
+            unlockGain.disconnect();
+          } catch (error) {}
+        }, 50);
+      } catch (error) {}
+    }
+  };
+
+  const primeAlarmAudio = async () => {
+    ensureAlarmAudioReady();
+    await unlockAudioEngine();
+    audioPrimedRef.current = true;
+  };
+
+  const startAlarmLoop = () => {
+    void (async () => {
+      try {
+        if (alarmOscRef.current || alarmGainRef.current || alarmPatternIntervalRef.current != null) {
+          stopAlarmLoop();
+        }
+
+        const audio = ensureAlarmAudioReady();
+        let mediaAlarmStarted = false;
+        if (audio) {
+          try {
+            audio.currentTime = 0;
+            audio.loop = true;
+            await audio.play();
+            mediaAlarmStarted = true;
+          } catch (error) {
+            if (!audioPrimedRef.current) {
+              console.warn("Alarm audio playback was not primed before timer completion.");
+            }
+          }
+        }
+
+        const ctx = await ensureAudioContextReady();
+        if (!ctx && mediaAlarmStarted) {
+          setAlarmActive(true);
+          return;
+        }
+        if (!ctx) return;
+
+        const master = ctx.createGain();
+        master.gain.setValueAtTime(isSafariBrowser ? 0.64 : 0.46, ctx.currentTime);
+        master.connect(ctx.destination);
+
+        const osc = ctx.createOscillator();
+        osc.type = isSafariBrowser ? "square" : "triangle";
+        const ringtonePattern = [523.25, 659.25, 783.99, 659.25, 880.0, 659.25];
+        osc.frequency.setValueAtTime(ringtonePattern[0], ctx.currentTime);
+        osc.connect(master);
+        osc.start();
+
+        let step = 0;
+        const beatMs = 240;
+        const playStep = () => {
+          const now = ctx.currentTime;
+          const freq = ringtonePattern[step % ringtonePattern.length];
+          step += 1;
+          osc.frequency.cancelScheduledValues(now);
+          osc.frequency.setValueAtTime(freq, now);
+        };
+
+        playStep();
+        alarmPatternIntervalRef.current = window.setInterval(playStep, beatMs);
+
+        alarmOscRef.current = osc;
+        alarmGainRef.current = master;
+        setAlarmActive(true);
+      } catch (e) {
+        console.warn("Start alarm failed:", e);
+      }
+    })();
+  };
+
+  const stopAlarmLoop = () => {
+    try {
+      const audio = alarmAudioRef.current;
+      // Capture current nodes first, clear refs immediately to avoid races.
+      const osc = alarmOscRef.current;
+      const gain = alarmGainRef.current;
+      const patternInterval = alarmPatternIntervalRef.current;
+      alarmOscRef.current = null;
+      alarmGainRef.current = null;
+      alarmPatternIntervalRef.current = null;
+      setAlarmActive(false);
+
+      if (patternInterval != null) {
+        try {
+          clearInterval(patternInterval);
+        } catch (e) {}
+      }
+
+      if (audio) {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch (error) {}
+      }
+
+      // Smoothly ramp down then stop/disconnect deterministic local nodes.
+      const ctx = audioCtxRef.current;
+      if (gain && ctx) {
+        try {
+          const now = ctx.currentTime;
+          gain.gain.cancelScheduledValues(now);
+          gain.gain.setValueAtTime(gain.gain.value, now);
+          gain.gain.linearRampToValueAtTime(0.0001, now + 0.08);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (osc) {
+        try {
+          if (ctx) {
+            osc.stop(ctx.currentTime + 0.06);
+          } else {
+            osc.stop();
+          }
+        } catch (e) {}
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+          } catch (e) {}
+        }, 130);
+      }
+
+      if (gain) {
+        setTimeout(() => {
+          try {
+            gain.disconnect();
+          } catch (e) {}
+        }, 140);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+
+  
+
 
 
   const times = {
@@ -69,8 +355,29 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     longBreak: (globalLongBreakTime || 15) * 60,
   };
 
+  const completeTimer = () => {
+    setIsRunning(false);
+    timerEndTsRef.current = null;
+    setInfoMsg(`${mode === "focus" ? "Focus session" : "Break"} is over!`);
+    setTimeout(() => setInfoMsg(""), 3500);
+    startAlarmLoop();
+    setTimeLeft(times[mode]);
+  };
+
+  const syncRemainingFromEndTs = () => {
+    const endTs = timerEndTsRef.current;
+    if (!endTs) return;
+    const remaining = Math.max(0, Math.ceil((endTs - Date.now()) / 1000));
+    if (remaining <= 0) {
+      completeTimer();
+    } else {
+      setTimeLeft(remaining);
+    }
+  };
+
   useEffect(() => {
-    if (!isRunning && timeLeft === times[mode]) {
+    // When workspace settings change, update the visible timer only if not running and no active alarm.
+    if (!isRunning && !alarmActive) {
       setTimeLeft(times[mode]);
     }
   }, [globalFocusTime, globalBreakTime, globalLongBreakTime]);
@@ -115,18 +422,53 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isDatePaletteOpen]);
 
+  // cleanup alarm on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        stopAlarmLoop();
+      } catch (e) {}
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      void unlockAudioEngine();
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio, { passive: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+  }, []);
+
   // Switch timer mode
   const changeMode = (newMode: "focus" | "shortBreak" | "longBreak") => {
     setIsRunning(false);
+    timerEndTsRef.current = null;
     setMode(newMode);
     setTimeLeft(times[newMode]);
+    stopAlarmLoop();
   };
 
   const handlePlayPause = () => {
     if (!isRunning) {
-      // Start or resume: do not reset `timeLeft` when resuming from a pause.
+      // Starting/resuming timer: ensure audio context is ready and stop any active alarm
+      try {
+        stopAlarmLoop();
+      } catch (e) {}
+      void primeAlarmAudio();
+      timerEndTsRef.current = Date.now() + timeLeft * 1000;
       setIsRunning(true);
     } else {
+      // Pause the timer while preserving exact remaining time.
+      syncRemainingFromEndTs();
+      timerEndTsRef.current = null;
       setIsRunning(false);
     }
   };
@@ -134,32 +476,11 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   // Timer Tick Effect
   useEffect(() => {
     if (isRunning) {
+      // Keep countdown based on absolute time so background tab throttling doesn't freeze progress.
+      syncRemainingFromEndTs();
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            setIsRunning(false);
-            // Play notification alert
-            try {
-              const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-              const oscillator = audioCtx.createOscillator();
-              const gainNode = audioCtx.createGain();
-              oscillator.connect(gainNode);
-              gainNode.connect(audioCtx.destination);
-              oscillator.type = "sine";
-              oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
-              gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-              oscillator.start();
-              oscillator.stop(audioCtx.currentTime + 0.3);
-            } catch (e) {
-              console.log("Audio alert blocked or unsupported");
-            }
-            alert(`${mode === "focus" ? "Focus session" : "Break"} is over!`);
-            return times[mode];
-          }
-          return prev - 1;
-        });
-      }, 1000);
+        syncRemainingFromEndTs();
+      }, 250);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -167,7 +488,18 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRunning, mode]);
+  }, [isRunning, mode, globalFocusTime, globalBreakTime, globalLongBreakTime]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && isRunning) {
+        syncRemainingFromEndTs();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [isRunning, mode, globalFocusTime, globalBreakTime, globalLongBreakTime]);
 
   // Load Planner Tasks
   useEffect(() => {
@@ -443,6 +775,13 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
         </div>
       )}
 
+      {infoMsg && (
+        <div className="app-alert info planner-info-banner">
+          <Info className="w-4 h-4" />
+          <span>{infoMsg}</span>
+        </div>
+      )}
+
       {overdueTasks.length > 0 && (
         <div className="app-alert error planner-overdue-banner">
           <AlertTriangle className="w-4 h-4" />
@@ -535,14 +874,27 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
           </div>
 
           <div className="timer-controls">
+            {/* Primary control: Pause when running; Start/Resume when idle; Stop Alert when alarm active */}
             <button
-              className={`control-btn play-pause ${isRunning ? "running" : ""}`}
-              onClick={handlePlayPause}
+              className={`control-btn play-pause ${alarmActive ? "stop" : ""}`}
+              onClick={() => {
+                if (alarmActive) {
+                  // Stop the repeating alarm
+                  stopAlarmLoop();
+                } else {
+                  handlePlayPause();
+                }
+              }}
             >
               {isRunning ? (
                 <>
                   <Pause className="w-5 h-5" />
                   <span>Pause</span>
+                </>
+              ) : alarmActive ? (
+                <>
+                  <X className="w-5 h-5" />
+                  <span>Stop Alert</span>
                 </>
               ) : (
                 <>
@@ -564,7 +916,9 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
               className="control-btn reset"
               onClick={() => {
                 setIsRunning(false);
+                timerEndTsRef.current = null;
                 setTimeLeft(times[mode]);
+                stopAlarmLoop();
               }}
               title="Reset Timer"
             >

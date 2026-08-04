@@ -1,0 +1,72 @@
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
+
+      - name: Validate Firebase service account secret
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STACK_6A17C }}
+        run: |
+          node -e '
+            const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
+            if (!raw.trim()) {
+              console.error("Missing secret: FIREBASE_SERVICE_ACCOUNT_STACK_6A17C");
+              process.exit(1);
+            }
+            let parsed;
+            try {
+              parsed = JSON.parse(raw);
+            } catch {
+              console.error("FIREBASE_SERVICE_ACCOUNT_STACK_6A17C is not valid JSON. Paste full service-account JSON content, not a filename/path.");
+              process.exit(1);
+            }
+            if (parsed.type !== "service_account" || !parsed.client_email || !parsed.private_key) {
+              console.error("FIREBASE_SERVICE_ACCOUNT_STACK_6A17C must be a Firebase service-account JSON with type, client_email, and private_key.");
+              process.exit(1);
+            }
+            console.log("Firebase service account secret format looks valid.");
+          '
+
+      - name: Deploy to Firebase Hosting (live)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STACK_6A17C }}
+          channelId: live
+          projectId: stack-6a17c
