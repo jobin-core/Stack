@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import alarmSound from "../assets/stack-focus-alert.mp3";
 
 export type TaskStatus = "ToDo" | "InProgress" | "Blocked" | "Done";
 
@@ -37,6 +38,64 @@ interface PlannerAppProps {
   globalBreakTime?: number;
   globalLongBreakTime?: number;
 }
+
+const createAlarmToneDataUri = () => {
+  const sampleRate = 22050;
+  const durationSec = 1.2;
+  const sampleCount = Math.floor(sampleRate * durationSec);
+  const pcm = new Int16Array(sampleCount);
+  const notes = [783.99, 659.25, 880.0, 659.25];
+  const noteLength = Math.floor(sampleCount / notes.length);
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const noteIndex = Math.min(notes.length - 1, Math.floor(index / noteLength));
+    const frequency = notes[noteIndex];
+    const localIndex = index % noteLength;
+    const fadeIn = Math.min(1, localIndex / 220);
+    const fadeOut = Math.min(1, (noteLength - localIndex) / 320);
+    const envelope = Math.max(0, Math.min(fadeIn, fadeOut));
+    const harmonic =
+      Math.sin((2 * Math.PI * frequency * index) / sampleRate) * 0.7 +
+      Math.sin((2 * Math.PI * frequency * 2 * index) / sampleRate) * 0.18;
+    pcm[index] = Math.max(-1, Math.min(1, harmonic * envelope)) * 32767;
+  }
+
+  const buffer = new ArrayBuffer(44 + pcm.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + pcm.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, pcm.length * 2, true);
+
+  pcm.forEach((sample, index) => {
+    view.setInt16(44 + index * 2, sample, true);
+  });
+
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+
+  return `data:audio/wav;base64,${btoa(binary)}`;
+};
+
+const ALARM_TONE_DATA_URI = createAlarmToneDataUri();
 
 export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime, globalBreakTime, globalLongBreakTime }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -64,10 +123,15 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerEndTsRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const alarmOscRef = useRef<OscillatorNode | null>(null);
   const alarmGainRef = useRef<GainNode | null>(null);
   const alarmPatternIntervalRef = useRef<number | null>(null);
+  const audioPrimedRef = useRef(false);
   const datePaletteRef = useRef<HTMLDivElement | null>(null);
+  const isSafariBrowser =
+    typeof navigator !== "undefined" &&
+    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
   const ensureAudioContextReady = async (): Promise<AudioContext | null> => {
     try {
@@ -106,21 +170,88 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     }
   };
 
-  const startAlarmLoop = () => {
-    void ensureAudioContextReady().then((ctx) => {
-      if (!ctx) return;
+  const ensureAlarmAudioReady = () => {
+    if (typeof window === "undefined") return null;
+    if (!alarmAudioRef.current) {
+      const audio = new Audio(alarmSound || ALARM_TONE_DATA_URI);
+      audio.loop = true;
+      audio.preload = "auto";
+      audio.volume = 0.95;
+      audio.setAttribute("playsinline", "true");
+      audio.addEventListener("error", () => {
+        if (audio.src !== ALARM_TONE_DATA_URI) {
+          audio.src = ALARM_TONE_DATA_URI;
+          audio.load();
+        }
+      });
+      alarmAudioRef.current = audio;
+    }
+    return alarmAudioRef.current;
+  };
+
+  const unlockAudioEngine = async () => {
+    const ctx = await ensureAudioContextReady();
+    if (ctx) {
       try {
-        // Ensure only one alarm source exists at a time
+        const unlockGain = ctx.createGain();
+        unlockGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        unlockGain.connect(ctx.destination);
+        const unlockOsc = ctx.createOscillator();
+        unlockOsc.frequency.setValueAtTime(440, ctx.currentTime);
+        unlockOsc.connect(unlockGain);
+        unlockOsc.start(ctx.currentTime);
+        unlockOsc.stop(ctx.currentTime + 0.01);
+        setTimeout(() => {
+          try {
+            unlockOsc.disconnect();
+            unlockGain.disconnect();
+          } catch (error) {}
+        }, 50);
+      } catch (error) {}
+    }
+  };
+
+  const primeAlarmAudio = async () => {
+    ensureAlarmAudioReady();
+    await unlockAudioEngine();
+    audioPrimedRef.current = true;
+  };
+
+  const startAlarmLoop = () => {
+    void (async () => {
+      try {
         if (alarmOscRef.current || alarmGainRef.current || alarmPatternIntervalRef.current != null) {
           stopAlarmLoop();
         }
 
+        const audio = ensureAlarmAudioReady();
+        let mediaAlarmStarted = false;
+        if (audio) {
+          try {
+            audio.currentTime = 0;
+            audio.loop = true;
+            await audio.play();
+            mediaAlarmStarted = true;
+          } catch (error) {
+            if (!audioPrimedRef.current) {
+              console.warn("Alarm audio playback was not primed before timer completion.");
+            }
+          }
+        }
+
+        const ctx = await ensureAudioContextReady();
+        if (!ctx && mediaAlarmStarted) {
+          setAlarmActive(true);
+          return;
+        }
+        if (!ctx) return;
+
         const master = ctx.createGain();
-        master.gain.setValueAtTime(0.46, ctx.currentTime);
+        master.gain.setValueAtTime(isSafariBrowser ? 0.64 : 0.46, ctx.currentTime);
         master.connect(ctx.destination);
 
         const osc = ctx.createOscillator();
-        osc.type = "triangle";
+        osc.type = isSafariBrowser ? "square" : "triangle";
         const ringtonePattern = [523.25, 659.25, 783.99, 659.25, 880.0, 659.25];
         osc.frequency.setValueAtTime(ringtonePattern[0], ctx.currentTime);
         osc.connect(master);
@@ -143,14 +274,14 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
         alarmGainRef.current = master;
         setAlarmActive(true);
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.warn("Start alarm failed:", e);
       }
-    });
+    })();
   };
 
   const stopAlarmLoop = () => {
     try {
+      const audio = alarmAudioRef.current;
       // Capture current nodes first, clear refs immediately to avoid races.
       const osc = alarmOscRef.current;
       const gain = alarmGainRef.current;
@@ -164,6 +295,13 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
         try {
           clearInterval(patternInterval);
         } catch (e) {}
+      }
+
+      if (audio) {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch (error) {}
       }
 
       // Smoothly ramp down then stop/disconnect deterministic local nodes.
@@ -293,6 +431,22 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
     };
   }, []);
 
+  useEffect(() => {
+    const unlockAudio = () => {
+      void unlockAudioEngine();
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio, { passive: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+  }, []);
+
   // Switch timer mode
   const changeMode = (newMode: "focus" | "shortBreak" | "longBreak") => {
     setIsRunning(false);
@@ -308,7 +462,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ userId, globalFocusTime,
       try {
         stopAlarmLoop();
       } catch (e) {}
-      void ensureAudioContextReady();
+      void primeAlarmAudio();
       timerEndTsRef.current = Date.now() + timeLeft * 1000;
       setIsRunning(true);
     } else {
